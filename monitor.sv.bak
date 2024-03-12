@@ -1,0 +1,160 @@
+`ifndef MON_SV
+`define MON_SV
+
+`include "package.sv"
+`include "seq_item.sv"
+
+//==================================================================================================
+//======================================= Monitor Master ===========================================
+//==================================================================================================
+//Monitor Master
+class m_monitor extends uvm_monitor;
+
+    virtual intf vif;
+
+    //Declare port to connect with Scoreboard
+    uvm_analysis_port #(seq_item) master_mon2scb;
+
+    `uvm_component_utils(m_monitor)
+    
+    function new(string name = "m_monitor", uvm_component parent = null);
+        super.new(name, parent);  
+    endfunction 
+
+    function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+        master_mon2scb = new("master_mon2scb", this);
+        if(!uvm_config_db#(virtual intf) :: get(this, "", "vif", vif))
+            `uvm_fatal(get_type_name(),"Not set at top level");
+    endfunction
+    
+    task run_phase(uvm_phase phase);
+         forever begin
+            wait (!vif.reset);
+            write_monitor();
+        end
+    endtask
+    
+     task write_monitor;
+            int len;
+            `uvm_info("DEBUG", "Inside Monitor Master", UVM_LOW)
+            wait(vif.aw_valid && vif.aw_ready);
+            mon_item            =  seq_item::type_id::create("mon_item");
+            mon_item.addr    =  vif.aw_addr;
+            mon_item.len     =  vif.aw_len;
+            mon_item.size    =  vif.aw_size;
+            mon_item.burst   =  vif.aw_burst;
+            len = mon_item.len + 1;
+            mon_item.data = new[len];
+            for(int i = 0; i < len;  i++) begin
+                 wait(vif.w_valid && vif.w_ready);
+                @(posedge vif.clk);
+                mon_item.strb = vif.w_strb;
+                mon_item.data[i] = vif.w_data;
+                $display("DATA = %0h, TIME_DATA = %0t", mon_item.data[i], $time);
+            end
+            mon_item.last = vif.w_last;
+            wait(mon_item.last);
+            $display("last = %0d, MONITOR TIME = %0t",mon_item.last, $time);
+            mon_item.print(uvm_default_table_printer);
+            master_mon2scb.write(mon_item);
+
+            wait(vif.b_valid && vif.b_ready);
+            `uvm_info("DEBUG", "End Monitor Master", UVM_LOW)
+    endtask
+
+endclass 
+
+//=================================================================================================
+//======================================= Monitor Slave ===========================================
+//=================================================================================================
+//Monitor Slave
+class s_monitor extends uvm_monitor;
+
+    virtual intf vif;
+    seq_item mon_item;
+    //Declare port to connect with Scoreboard
+    uvm_analysis_port #(seq_item) slave_mon2scb;
+
+    `uvm_component_utils(s_monitor)
+    
+    function new(string name = "s_monitor", uvm_component parent = null);
+        super.new(name, parent);  
+    endfunction 
+
+    function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+        slave_mon2scb = new("slave_mon2scb", this);
+        if(!uvm_config_db#(virtual intf) :: get(this, "", "vif", vif))
+            `uvm_fatal(get_type_name(),"Not set at top level");
+    endfunction
+    
+    task run_phase(uvm_phase phase);
+        forever begin
+            wait(!vif.reset);
+            write_monitor();
+        end
+    endtask
+
+    
+    task write_monitor;
+         int len;
+        `uvm_info("DEBUG", "Inside Monitor Slave", UVM_LOW)
+        wait(vif.aw_valid && vif.aw_ready);
+        @(posedge vif.clk);
+        mon_item            =  seq_item::type_id::create("mon_item");
+        mon_item.addr    =  vif.aw_addr;
+        mon_item.len     =  vif.aw_len;
+        mon_item.size    =  vif.aw_size;
+        mon_item.burst   =  vif.aw_burst;
+        len = mon_item.len + 1;
+        mon_item.data = new[len];
+        for(int i = 0; i < len; i++) begin
+            wait(vif.w_valid && vif.w_ready);
+            @(posedge vif.clk);
+            mon_item.strb = vif.w_strb;
+            mon_item.data[i] = vif.w_data;
+            $display("DATA = %0h, TIME_DATA = %0t", mon_item.data[i], $time);
+        end
+        mon_item.last = vif.w_last;
+        $display("last = %0d, MONITOR_TIME = %0t", mon_item.last, $time);
+        mon_item.print(uvm_default_table_printer);
+        wait(mon_item.last)
+        slave_mon2scb.write(mon_item);
+
+        wait(vif.b_ready && vif.b_valid);
+        `uvm_info("DEBUG", "End Monitor Slave", UVM_LOW)
+    endtask
+endclass
+
+//=================================================================================================
+//======================================= Base Monitor ============================================
+//=================================================================================================
+//Monitor
+class monitor extends uvm_monitor;
+
+    virtual intf vif;
+
+    //Declare port to connect with Scoreboard
+
+    `uvm_component_utils(monitor)
+    
+    function new(string name = "monitor", uvm_component parent = null);
+        super.new(name, parent);  
+    endfunction 
+
+    function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+        if(!uvm_config_db#(virtual intf) :: get(this, "", "vif", vif))
+            `uvm_fatal(get_type_name(),"Not set at top level");
+    endfunction
+    
+    task run_phase(uvm_phase phase);
+       
+    endtask
+
+   
+
+endclass
+
+`endif
